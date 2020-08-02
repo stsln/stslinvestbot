@@ -16,6 +16,12 @@ user_markup = telebot.types.ReplyKeyboardMarkup(True, False)
 user_markup.row('\ud83c\udf25Погода', '\ud83d\udcf0Новости', '\u26fd\ufe0fНефть')
 user_markup.row('\ud83d\udcbcПортфель', 'Другие акции', '\ud83c\udf24Погода в другом городе')
 
+user_markup_end = telebot.types.ReplyKeyboardMarkup(True, False)
+user_markup_end.row('Назад')
+
+user_markup_geo_end = telebot.types.ReplyKeyboardMarkup(True, False)
+user_markup_geo_end.add(telebot.types.KeyboardButton(text="Отправить местоположение", request_location=True), 'Назад')
+
 name_portfolio = [['Портфель'], ['💼Портфель'], ['💼']]
 name_weather = [['Погода'], ['🌥Погода'], ['🌥']]
 name_stock = [['Другая Акция'], ['Акция'], ['Другие Акции']]
@@ -84,18 +90,24 @@ def yandex_news():  # парсер новостей
     return day_data_news
 
 
-def other_promotions(message):  # другая акция
-    ticker = message.text
+def other_stock(message):  # другая акция
+    line_words = message.text.split()
+    if len(line_words) == 2:
+        ticker = line_words[1]
+    else:
+        ticker = message.text
     instr = client_invest.market.market_search_by_ticker_get_with_http_info(ticker)
     if ticker == "Назад":
         token_bot.send_message(message.from_user.id, "Хорошо, назад.", reply_markup=user_markup)
         token_bot.register_next_step_handler(message, get_text_messages)
     elif str(instr[0].payload.instruments) == "[]":
-        msg = token_bot.send_message(message.chat.id, 'Ошибка! Такой тикер не найден!\nВведите другой тикер:')
-        token_bot.register_next_step_handler(msg, other_promotions)
+        msg = token_bot.send_message(message.chat.id, 'Ошибка! Такой тикер не найден!\nВведите другой тикер:',
+                                     reply_markup=user_markup_end)
+        token_bot.register_next_step_handler(msg, other_stock)
         return
     if str(instr[0].payload.instruments) != "[]" and ticker != "Назад":
         token_bot.send_message(message.from_user.id, data_stock(ticker), reply_markup=user_markup)
+        return data_stock(ticker)
 
 
 def other_weather(message):
@@ -127,30 +139,30 @@ def cmd_start(message):
 
 @token_bot.message_handler(content_types=['text'])  # метод, который получает сообщения и обрабатывает их
 def get_text_messages(message):
-    if [message.text.title()] in name_weather:
+    line_message = message.text.title()
+    line_words = line_message.split()
+
+    if [line_message] in name_weather:
         token_bot.send_message(message.chat.id, weather('https://yandex.ru/pogoda/kozmodemyansk'))
-    elif [message.text.title()] in name_portfolio:
+    elif [line_message] in name_portfolio:
         token_bot.send_message(message.chat.id,
                                portfolio_stock('https://smart-lab.ru/q/portfolio/StepanBurimov/31269/'),
                                parse_mode='Markdown')
-    elif [message.text.title()] in name_brent:
+    elif [line_message] in name_brent:
         token_bot.send_message(message.chat.id, oil_brent())
-    elif [message.text.title()] in name_stock:
-        user_markup_end = telebot.types.ReplyKeyboardMarkup(True, False)
-        user_markup_end.row('Назад')
+    elif [line_message] in name_stock:
         token_bot.send_message(message.chat.id, 'Введи нужный тикер, например USD000UTSTOM - будет курс доллара:',
                                reply_markup=user_markup_end)
-        token_bot.register_next_step_handler(message, other_promotions)
-    elif [message.text.title()] in name_yandex_news:
+        token_bot.register_next_step_handler(message, other_stock)
+    elif [line_message] in name_yandex_news:
         token_bot.send_message(message.chat.id, yandex_news(), parse_mode='Markdown')
-    elif [message.text.title()] in name_weather_other:
-        keyboard = telebot.types.ReplyKeyboardMarkup(True, False)
-        button_geo = telebot.types.KeyboardButton(text="Отправить местоположение", request_location=True)
-        keyboard.add(button_geo, 'Назад')
+    elif [line_message] in name_weather_other:
         token_bot.send_message(message.chat.id,
                                "Нажми на кнопку и передай мне местоположение или напиши название города на англиийском.",
-                               reply_markup=keyboard)
+                               reply_markup=user_markup_geo_end)
         token_bot.register_next_step_handler(message, other_weather)
+    elif line_words[0] == "Цена" or line_words[0] == "Price":
+        other_stock(message)
     else:
         token_bot.send_message(message.chat.id, "Я тебя не понимаю. Напиши /help.")
 
