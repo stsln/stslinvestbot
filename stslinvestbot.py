@@ -1,4 +1,5 @@
 import logging
+import datetime
 
 import lxml
 import pandas
@@ -28,10 +29,11 @@ name_stock = [['Другая Акция'], ['Акция'], ['Другие Акц
 name_brent = [['Нефть'], ['Brent'], ['⛽️Нефть']]
 name_yandex_news = [['Новости'], ['News'], ['📰Новости']]
 name_weather_other = [['Погода В Другом Городе'], ['Погода В'], ['🌥 в'], ['🌤Погода В Другом Городе']]
+name_weather_tomorrow = [['Погода Завтра'], ['Погода На Завтра']]
 
 
 def portfolio_stock(url):
-    data_portfolio = "*Котировки акции портфеля:*\n\n"
+    data_portfolio = "*Котировки акции портфеля:*\n"
     df_rus = pandas.read_html(url)[1][['Название', 'Текущ.цена', 'Изм, день %']]
     for row in df_rus.iloc:
         title, price, diff = row
@@ -42,6 +44,11 @@ def portfolio_stock(url):
         title, price, diff = row
         diff = diff.split()
         data_portfolio += title + ": " + price + " (" + ''.join(diff) + ")\n"
+    data_portfolio += "*Календарь акции:*\n"
+    df_calendar = pandas.read_html(url)[8][['Дата', 'Описание']]
+    for row in df_calendar.iloc:
+        date, description = row
+        data_portfolio += str(date) + " " + str(description) + " " + "\n"
     return data_portfolio
 
 
@@ -55,17 +62,37 @@ def data_stock(ticker):  # парсер тикера, в функцию пере
     return data_stock_total
 
 
-def weather(city):  # парсер погоды, в функцию передается название города на английском
-    data_link = requests.get(city).text
-    parser_data = BeautifulSoup(data_link, 'html.parser')
-    time_city = parser_data.find('time', class_='time fact__time').text
-    weather_city_all_data = parser_data.find('div', class_='temp fact__temp fact__temp_size_s')
-    weather_city = weather_city_all_data.find('span', class_='temp__value').text
-    condition_day_city = parser_data.find('div', class_='link__condition day-anchor i-bem').text
-    name_city = parser_data.find('h1', class_='title title_level_1 header-title__title').text
-    rainfall_city = parser_data.find('p', class_='maps-widget-fact__title').text
-    data_weather = time_city + "\n" + name_city + ": " + weather_city + "°, " + condition_day_city + "\n" + rainfall_city
-    return data_weather
+def weather_today(city):  # парсер погоды, в функцию передается название города на английском
+    try:
+        data_link = requests.get(city).text
+        parser_data = BeautifulSoup(data_link, 'html.parser')
+        time_city = parser_data.find('time', class_='time fact__time').text
+        weather_city_all_data = parser_data.find('div', class_='temp fact__temp fact__temp_size_s')
+        weather_city_temp = weather_city_all_data.find('span', class_='temp__value').text
+        condition_day_city = parser_data.find('div', class_='link__condition day-anchor i-bem').text
+        name_city = parser_data.find('h1', class_='title title_level_1 header-title__title').text
+        rainfall_city = parser_data.find('p', class_='maps-widget-fact__title').text
+        data_weather_today = time_city + "\n" + name_city + ": " + weather_city_temp + "°, " + condition_day_city + "\n" + rainfall_city
+    except Error:
+        data_weather_today = "Не удалось узнать погоду!"
+    return data_weather_today
+
+
+def weather_tomorrow(city):  # парсер погоды на завтра, в функцию передается название города на английском
+    try:
+        date_tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+        data_link = requests.get(city).text
+        parser_data = BeautifulSoup(data_link, 'html.parser')
+        weather_card = parser_data.findAll('div', class_='card')[2]
+        weather_table_tomorrow = weather_card.find('tbody', class_='weather-table__body')
+        weather_city_all_data_tomorrow = weather_table_tomorrow.findAll('tr', class_='weather-table__row')[1]
+        weather_city_temp = weather_city_all_data_tomorrow.findAll('div', class_='temp')[1].text
+        condition_day_city = weather_city_all_data_tomorrow.find('td',
+                                                                 class_='weather-table__body-cell weather-table__body-cell_type_condition').text
+        data_weather_tomorrow = 'Завтра ' + date_tomorrow.strftime('%d.%m') + ', ' + weather_city_temp + ', ' + condition_day_city
+    except Error:
+        data_weather_tomorrow = "Не удалось узнать погоду!"
+    return data_weather_tomorrow
 
 
 def oil_brent():  # парсер нефти
@@ -110,22 +137,34 @@ def other_stock(message):  # другая акция
         return data_stock(ticker)
 
 
-def other_weather(message):
+def other_weather(message, day_value):
+    link_weather_standard = "https://yandex.ru/pogoda/"
     if message.location is not None:
-        link_weather = "https://yandex.ru/pogoda/?lat=" + str(message.location.latitude) + "&lon=" + \
-                       str(message.location.longitude)
+        if day_value == "today":
+            link_weather = link_weather_standard + "?lat=" + str(message.location.latitude) + "&lon=" + \
+                           str(message.location.longitude)
+        else:
+            link_weather = link_weather_standard + "details?lat=" + str(message.location.latitude) + "&lon=" + \
+                           str(message.location.longitude)
     else:
-        link_weather = "https://yandex.ru/pogoda/" + message.text
+        if day_value == "today":
+            link_weather = link_weather_standard + message.text
+        else:
+            link_weather = link_weather_standard + message.text + "/details?via=ms"
+
         if message.text == "Назад":
             token_bot.send_message(message.from_user.id, "Хорошо, назад.", reply_markup=user_markup)
             token_bot.register_next_step_handler(message, get_text_messages)
             return
         elif requests.get(link_weather).status_code != 200:
-            msg = token_bot.send_message(message.chat.id, 'Ошибка! Такой город не найден!\nВведите другое название:')
-            token_bot.register_next_step_handler(msg, other_weather)
+            message = token_bot.send_message(message.chat.id, 'Ошибка! Такой город не найден!\nВведите другое название:')
+            token_bot.register_next_step_handler(message, lambda message_received: other_weather(message_received, day_value))
             return
-    if link_weather != "Назад":
-        token_bot.send_message(message.from_user.id, weather(link_weather), reply_markup=user_markup)
+    if link_weather != "Назад" and requests.get(link_weather).status_code == 200:
+        if day_value == "today":
+            token_bot.send_message(message.from_user.id, weather_today(link_weather), reply_markup=user_markup)
+        else:
+            token_bot.send_message(message.from_user.id, weather_tomorrow(link_weather), reply_markup=user_markup)
 
 
 @token_bot.message_handler(commands=['start', 'help'])
@@ -143,7 +182,7 @@ def get_text_messages(message):
     line_words = line_message.split()
 
     if [line_message] in name_weather:
-        token_bot.send_message(message.chat.id, weather('https://yandex.ru/pogoda/kozmodemyansk'))
+        token_bot.send_message(message.chat.id, weather_today('https://yandex.ru/pogoda/kozmodemyansk'))
     elif [line_message] in name_portfolio:
         token_bot.send_message(message.chat.id,
                                portfolio_stock('https://smart-lab.ru/q/portfolio/StepanBurimov/31269/'),
@@ -157,14 +196,28 @@ def get_text_messages(message):
     elif [line_message] in name_yandex_news:
         token_bot.send_message(message.chat.id, yandex_news(), parse_mode='Markdown')
     elif [line_message] in name_weather_other:
-        token_bot.send_message(message.chat.id,
-                               "Нажми на кнопку и передай мне местоположение или напиши название города на англиийском.",
-                               reply_markup=user_markup_geo_end)
-        token_bot.register_next_step_handler(message, other_weather)
+        message = token_bot.send_message(message.chat.id,
+                                         "Нажми на кнопку и передай мне местоположение или напиши название города на англиийском.",
+                                         reply_markup=user_markup_geo_end)
+        token_bot.register_next_step_handler(message, lambda message_received: other_weather(message_received, "today"))
+    elif [line_message] in name_weather_tomorrow:
+        message = token_bot.send_message(message.chat.id,
+                                         "Нажми на кнопку и передай мне местоположение или напиши название города на англиийском.",
+                                         reply_markup=user_markup_geo_end)
+        token_bot.register_next_step_handler(message, lambda message_received: other_weather(message_received, "tomorrow"))
     elif line_words[0] == "Цена" or line_words[0] == "Price":
         other_stock(message)
     else:
         token_bot.send_message(message.chat.id, "Я тебя не понимаю. Напиши /help.")
 
 
-token_bot.polling(none_stop=True)
+while True:
+    try:
+        logging.info("Bot running..")
+        token_bot.polling(none_stop=True, interval=2)
+        break
+    except telebot.apihelper.ApiException as e:
+        logging.error(e)
+        token_bot.stop_polling()
+        time.sleep(15)
+        logging.info("Running again!")
