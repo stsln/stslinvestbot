@@ -1,5 +1,6 @@
 import logging
 import datetime
+import time
 
 import lxml
 import pandas
@@ -8,31 +9,40 @@ import telebot
 from bs4 import BeautifulSoup
 from openapi_client import openapi
 
+# токен Telegram
 token_bot = telebot.TeleBot('token')
 
-token_invest = 'token'
-client_invest = openapi.sandbox_api_client(token_invest)
+# токен api Тинькофф Инвестиции
+client_invest = openapi.sandbox_api_client('token')
 
-user_markup = telebot.types.ReplyKeyboardMarkup(True, False)
-user_markup.row('\ud83c\udf25Погода', '\ud83d\udcf0Новости', '\u26fd\ufe0fНефть')
-user_markup.row('\ud83d\udcbcПортфель', 'Другие акции', '\ud83c\udf24Погода в другом городе')
+# основная пользовательская клавиатура
+main_user_keyboard = telebot.types.ReplyKeyboardMarkup(True, False)
+main_user_keyboard.row('\ud83c\udf25Погода', '\ud83d\udcf0Новости', '\u26fd\ufe0fНефть')
+main_user_keyboard.row('\ud83d\udcbcПортфель', 'Другие акции', '\ud83c\udf24Погода в другом городе')
 
-user_markup_end = telebot.types.ReplyKeyboardMarkup(True, False)
-user_markup_end.row('Назад')
+# клавиатура кнопка назад
+user_keyboard_back = telebot.types.ReplyKeyboardMarkup(True, False)
+user_keyboard_back.row('Назад')
 
-user_markup_geo_end = telebot.types.ReplyKeyboardMarkup(True, False)
-user_markup_geo_end.add(telebot.types.KeyboardButton(text="Отправить местоположение", request_location=True), 'Назад')
+# клавиатура кнопка назад и запрос гео-координат
+user_keyboard_geo_back = telebot.types.ReplyKeyboardMarkup(True, False)
+user_keyboard_geo_back.add(telebot.types.KeyboardButton(text="Отправить местоположение", request_location=True), 'Назад')
 
-name_portfolio = [['Портфель'], ['💼Портфель'], ['💼']]
-name_weather = [['Погода'], ['🌥Погода'], ['🌥']]
+name_portfolio = [['Портфель'], ['💼Портфель']]
+name_weather = [['Погода'], ['🌥Погода']]
 name_stock = [['Другая Акция'], ['Акция'], ['Другие Акции']]
 name_brent = [['Нефть'], ['Brent'], ['⛽️Нефть']]
-name_yandex_news = [['Новости'], ['News'], ['📰Новости']]
-name_weather_other = [['Погода В Другом Городе'], ['Погода В'], ['🌥 в'], ['🌤Погода В Другом Городе']]
+name_yandex_news = [['Новости'], ['📰Новости']]
+name_weather_other = [['Погода В Другом Городе'], ['Погода В'], ['🌤Погода В Другом Городе']]
 name_weather_tomorrow = [['Погода Завтра'], ['Погода На Завтра']]
 
 
-def portfolio_stock(url):
+def portfolio_stock(url='https://smart-lab.ru/q/portfolio/StepanBurimov/31269/'):
+    """
+    Парсер портфеля на SmartLab
+    :param url:
+    :return: data_portfolio: все данные об портфеле
+    """
     data_portfolio = "*Котировки акции портфеля:*\n"
     df_rus = pandas.read_html(url)[1][['Название', 'Текущ.цена', 'Изм, день %']]
     for row in df_rus.iloc:
@@ -45,14 +55,19 @@ def portfolio_stock(url):
         diff = diff.split()
         data_portfolio += title + ": " + price + " (" + ''.join(diff) + ")\n"
     data_portfolio += "*Календарь акции:*\n"
-    df_calendar = pandas.read_html(url)[8][['Дата', 'Описание']]
+    df_calendar = pandas.read_html(url)[10][['Дата', 'Описание']]
     for row in df_calendar.iloc:
         date, description = row
         data_portfolio += str(date) + " " + str(description) + " " + "\n"
     return data_portfolio
 
 
-def data_stock(ticker):  # парсер тикера, в функцию передается нужный тикер
+def data_stock(ticker):
+    """
+    Парсер тикера, в функцию передается нужный тикер
+    :param ticker:
+    :return:data_stock_total: полные данные об акции за день
+    """
     instr = client_invest.market.market_search_by_ticker_get(ticker).payload.instruments[0]
     name_company_share = instr.name
     close_price = client_invest.market.market_orderbook_get(instr.figi, 1).payload.close_price
@@ -62,7 +77,12 @@ def data_stock(ticker):  # парсер тикера, в функцию пере
     return data_stock_total
 
 
-def weather_today(city):  # парсер погоды, в функцию передается название города на английском
+def weather_today(city='https://yandex.ru/pogoda/cheboksary'):
+    """
+    Парсер погоды, в функцию передается название города на английском
+    :param city:
+    :return: data_weather_today: данные погоды сегодня
+    """
     try:
         data_link = requests.get(city).text
         parser_data = BeautifulSoup(data_link, 'html.parser')
@@ -78,7 +98,12 @@ def weather_today(city):  # парсер погоды, в функцию пер�
     return data_weather_today
 
 
-def weather_tomorrow(city):  # парсер погоды на завтра, в функцию передается название города на английском
+def weather_tomorrow(city):
+    """
+    Парсер погоды на завтра, в функцию передается название города на английском
+    :param city:
+    :return: data_weather_today: данные погоды завтра
+    """
     try:
         date_tomorrow = datetime.date.today() + datetime.timedelta(days=1)
         data_link = requests.get(city).text
@@ -95,17 +120,25 @@ def weather_tomorrow(city):  # парсер погоды на завтра, в �
     return data_weather_tomorrow
 
 
-def oil_brent():  # парсер нефти
+def oil_brent():
+    """
+    Парсер нефти
+    :return: date_brent: данные нефти
+    """
     link_brent = "https://www.finam.ru/quote/tovary/brent/"
     data_link = requests.get(link_brent).text
     parser_data = BeautifulSoup(data_link, 'html.parser')
     price_brent = "$" + parser_data.find('span', class_='PriceInformation__price--26G').text
     day_data_brent = parser_data.find('sub', class_='PriceInformation__subContainer--2qx').text
-    date_brent = "Нефть Brent: " + price_brent + " (" + day_data_brent + ")"
+    date_brent = f"Нефть Brent: {price_brent} ({day_data_brent})"
     return date_brent
 
 
-def yandex_news():  # парсер новостей
+def yandex_news():
+    """
+    Парсер новостей
+    :return: day_data_news: дневные новости
+    """
     link_news = 'https://yandex.ru'
     data_link = requests.get(link_news).text
     parser_data = BeautifulSoup(data_link, 'html.parser')
@@ -117,7 +150,12 @@ def yandex_news():  # парсер новостей
     return day_data_news
 
 
-def other_stock(message):  # другая акция
+def other_stock(message):
+    """
+    Обработака сторки данных, чтобы узнать тикер
+    :param message:
+    :return:
+    """
     line_words = message.text.split()
     if len(line_words) == 2:
         ticker = line_words[1]
@@ -125,15 +163,15 @@ def other_stock(message):  # другая акция
         ticker = message.text
     instr = client_invest.market.market_search_by_ticker_get_with_http_info(ticker)
     if ticker == "Назад":
-        token_bot.send_message(message.from_user.id, "Хорошо, назад.", reply_markup=user_markup)
+        token_bot.send_message(message.from_user.id, "Хорошо, назад.", reply_markup=main_user_keyboard)
         token_bot.register_next_step_handler(message, get_text_messages)
     elif str(instr[0].payload.instruments) == "[]":
         msg = token_bot.send_message(message.chat.id, 'Ошибка! Такой тикер не найден!\nВведите другой тикер:',
-                                     reply_markup=user_markup_end)
+                                     reply_markup=user_keyboard_back)
         token_bot.register_next_step_handler(msg, other_stock)
         return
     if str(instr[0].payload.instruments) != "[]" and ticker != "Назад":
-        token_bot.send_message(message.from_user.id, data_stock(ticker), reply_markup=user_markup)
+        token_bot.send_message(message.from_user.id, data_stock(ticker), reply_markup=main_user_keyboard)
         return data_stock(ticker)
 
 
@@ -153,7 +191,7 @@ def other_weather(message, day_value):
             link_weather = link_weather_standard + message.text + "/details?via=ms"
 
         if message.text == "Назад":
-            token_bot.send_message(message.from_user.id, "Хорошо, назад.", reply_markup=user_markup)
+            token_bot.send_message(message.from_user.id, "Хорошо, назад.", reply_markup=main_user_keyboard)
             token_bot.register_next_step_handler(message, get_text_messages)
             return
         elif requests.get(link_weather).status_code != 200:
@@ -162,9 +200,9 @@ def other_weather(message, day_value):
             return
     if link_weather != "Назад" and requests.get(link_weather).status_code == 200:
         if day_value == "today":
-            token_bot.send_message(message.from_user.id, weather_today(link_weather), reply_markup=user_markup)
+            token_bot.send_message(message.from_user.id, weather_today(link_weather), reply_markup=main_user_keyboard)
         else:
-            token_bot.send_message(message.from_user.id, weather_tomorrow(link_weather), reply_markup=user_markup)
+            token_bot.send_message(message.from_user.id, weather_tomorrow(link_weather), reply_markup=main_user_keyboard)
 
 
 @token_bot.message_handler(commands=['start', 'help'])
@@ -173,7 +211,7 @@ def cmd_start(message):
                                             "\nС помощью этого бота можно узнать цену на нефть, акции, погоду и новости."
                                             "\n\n*Цены на акции отображаются с задержкой 15 минут."
                                             "\nПомощь: @stslq",
-                           reply_markup=user_markup)
+                           reply_markup=main_user_keyboard)
 
 
 @token_bot.message_handler(content_types=['text'])  # метод, который получает сообщения и обрабатывает их
@@ -182,28 +220,26 @@ def get_text_messages(message):
     line_words = line_message.split()
 
     if [line_message] in name_weather:
-        token_bot.send_message(message.chat.id, weather_today('https://yandex.ru/pogoda/kozmodemyansk'))
+        token_bot.send_message(message.chat.id, weather_today())
     elif [line_message] in name_portfolio:
-        token_bot.send_message(message.chat.id,
-                               portfolio_stock('https://smart-lab.ru/q/portfolio/StepanBurimov/31269/'),
-                               parse_mode='Markdown')
+        token_bot.send_message(message.chat.id, portfolio_stock(), parse_mode='Markdown')
     elif [line_message] in name_brent:
         token_bot.send_message(message.chat.id, oil_brent())
     elif [line_message] in name_stock:
         token_bot.send_message(message.chat.id, 'Введи нужный тикер, например USD000UTSTOM - будет курс доллара:',
-                               reply_markup=user_markup_end)
+                               reply_markup=user_keyboard_back)
         token_bot.register_next_step_handler(message, other_stock)
     elif [line_message] in name_yandex_news:
         token_bot.send_message(message.chat.id, yandex_news(), parse_mode='Markdown')
     elif [line_message] in name_weather_other:
         message = token_bot.send_message(message.chat.id,
                                          "Нажми на кнопку и передай мне местоположение или напиши название города на англиийском.",
-                                         reply_markup=user_markup_geo_end)
+                                         reply_markup=user_keyboard_geo_back)
         token_bot.register_next_step_handler(message, lambda message_received: other_weather(message_received, "today"))
     elif [line_message] in name_weather_tomorrow:
         message = token_bot.send_message(message.chat.id,
                                          "Нажми на кнопку и передай мне местоположение или напиши название города на англиийском.",
-                                         reply_markup=user_markup_geo_end)
+                                         reply_markup=user_keyboard_geo_back)
         token_bot.register_next_step_handler(message, lambda message_received: other_weather(message_received, "tomorrow"))
     elif line_words[0] == "Цена" or line_words[0] == "Price":
         other_stock(message)
