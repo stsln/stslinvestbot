@@ -12,14 +12,13 @@ from openapi_client import openapi
 # token Telegram
 token_bot = telebot.TeleBot('token')
 
-# token api Тинькофф Инвестиции
-client_invest = openapi.sandbox_api_client(
-    'token')
+# token API Тинькофф Инвестиции
+client_invest = openapi.sandbox_api_client('token')
 
 # main keyboard user
 main_user_keyboard = telebot.types.ReplyKeyboardMarkup(True, False)
-main_user_keyboard.row('\ud83c\udf25Погода', '\ud83d\udcf0Новости', '\u26fd\ufe0fНефть')
-main_user_keyboard.row('\ud83d\udcbcПортфель', 'Другие акции', '\ud83c\udf24Погода в другом городе')
+main_user_keyboard.row('Погода', 'Новости', 'Акции', 'Нефть')
+main_user_keyboard.row('Погода в другом городе', 'Портфель')
 
 # keyboard button back
 user_keyboard_back = telebot.types.ReplyKeyboardMarkup(True, False)
@@ -30,11 +29,11 @@ user_keyboard_geo_back = telebot.types.ReplyKeyboardMarkup(True, False)
 user_keyboard_geo_back.add(telebot.types.KeyboardButton(text='Отправить местоположение', request_location=True),
                            'Назад')
 
-name_portfolio = [['Портфель'], ['💼Портфель']]
-name_weather = [['Погода'], ['🌥Погода'], ['Weather']]
-name_stock = [['Другая Акция'], ['Акция'], ['Другие Акции']]
-name_brent = [['Нефть'], ['Brent'], ['⛽️Нефть']]
-name_yandex_news = [['Новости'], ['📰Новости']]
+name_portfolio = [['Портфель'], ['Portfolio']]
+name_weather = [['Погода'], ['Weather']]
+name_stock = [['Другая Акция'], ['Акция'], ['Другие Акции'], ['Акции']]
+name_brent = [['Нефть'], ['Brent'], ['Petroleum']]
+name_yandex_news = [['Новости'], ['News']]
 name_weather_other = [['Погода В Другом Городе'], ['Погода В'], ['🌤Погода В Другом Городе']]
 name_weather_tomorrow = [['Погода Завтра'], ['Погода На Завтра']]
 name_city_selection = [['Выбор Города']]
